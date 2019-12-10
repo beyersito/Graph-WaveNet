@@ -122,7 +122,7 @@ def load_pickle(pickle_file):
     return pickle_data
 
 def load_adj(pkl_filename, adjtype):
-    sensor_ids, sensor_id_to_ind, adj_mx = load_pickle(pkl_filename)
+    adj_mx = load_pickle(pkl_filename)
     if adjtype == "scalap":
         adj = [calculate_scaled_laplacian(adj_mx)]
     elif adjtype == "normlap":
