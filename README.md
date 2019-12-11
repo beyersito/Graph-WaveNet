@@ -59,8 +59,7 @@ rm ./experiment/metr/metr_epoch*
 
 #forward-backward
 expid=4
-python train.py --device $dv --gcn_bool --adjtype doubletransition  --epoch $ep --expid $expid  --save ./experiment/metr/metr > ./experiment/metr/train-$expid.log
-rm ./experiment/metr/metr_epoch*
+python train.py --device $dv --data data/SF-BIKE-60min/ --adjdata data/SF-BIKE-60min/adj_dist.pkl --expid $expid --save experiment/sf-bike/sf-bike --epoch $ep --gcn_bool --adjtype doubletransition
 
 #forward-backward-adaptive
 expid=5

@@ -4,6 +4,7 @@ import os
 import scipy.sparse as sp
 import torch
 from scipy.sparse import linalg
+from engine import trainer
 
 
 class DataLoader(object):
@@ -138,7 +139,7 @@ def load_adj(pkl_filename, adjtype):
     else:
         error = 0
         assert error, "adj type not defined"
-    return sensor_ids, sensor_id_to_ind, adj
+    return adj
 
 
 def load_dataset(dataset_dir, batch_size, valid_batch_size= None, test_batch_size=None):
@@ -209,3 +210,26 @@ def metric(pred, real):
     return mae,mape,rmse
 
 
+def build_model(args):
+    device = torch.device(args.device)
+    adj_mx = load_adj(args.adjdata,args.adjtype)
+    dataloader = load_dataset(args.data, args.batch_size, args.batch_size, args.batch_size)
+    scaler = dataloader['scaler']
+    supports = [torch.tensor(i).to(device) for i in adj_mx]
+
+    print(args)
+
+    if args.randomadj:
+        adjinit = None
+    else:
+        adjinit = supports[0]
+
+    if args.aptonly:
+        supports = None
+
+
+
+    engine = trainer(scaler, args.in_dim, args.seq_length, args.num_nodes, args.nhid, args.dropout,
+                         args.learning_rate, args.weight_decay, device, supports, args.gcn_bool, args.addaptadj,
+                         adjinit)
+    return engine, scaler, dataloader, adj_mx

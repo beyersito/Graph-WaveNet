@@ -5,9 +5,10 @@ import time
 import util
 import matplotlib.pyplot as plt
 from engine import trainer
+import wandb
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--device',type=str,default='cuda:3',help='')
+parser.add_argument('--device',type=str,default='cuda:0',help='')
 parser.add_argument('--data',type=str,default='data/METR-LA',help='data path')
 parser.add_argument('--adjdata',type=str,default='data/sensor_graph/adj_mx.pkl',help='adj data path')
 parser.add_argument('--adjtype',type=str,default='doubletransition',help='adj type')
@@ -18,7 +19,7 @@ parser.add_argument('--randomadj',action='store_true',help='whether random initi
 parser.add_argument('--seq_length',type=int,default=12,help='')
 parser.add_argument('--nhid',type=int,default=32,help='')
 parser.add_argument('--in_dim',type=int,default=2,help='inputs dimension')
-parser.add_argument('--num_nodes',type=int,default=207,help='number of nodes')
+parser.add_argument('--num_nodes',type=int,default=59,help='number of nodes')
 parser.add_argument('--batch_size',type=int,default=64,help='batch size')
 parser.add_argument('--learning_rate',type=float,default=0.001,help='learning rate')
 parser.add_argument('--dropout',type=float,default=0.3,help='dropout rate')
@@ -30,7 +31,13 @@ parser.add_argument('--expid',type=int,default=1,help='experiment id')
 
 args = parser.parse_args()
 
+tags = [args.adjtype]
+if args.aptonly:
+    tags.append('aptonly')
+if args.addaptadj:
+    tags.append('addaptadj')
 
+wandb.init(config=args, tags=tags)
 
 
 def main():
@@ -55,10 +62,13 @@ def main():
     engine = trainer(scaler, args.in_dim, args.seq_length, args.num_nodes, args.nhid, args.dropout,
                          args.learning_rate, args.weight_decay, device, supports, args.gcn_bool, args.addaptadj,
                          adjinit)
+    
+    wandb.watch(engine.model)
 
 
     print("start training...",flush=True)
     his_loss =[]
+    his_rmse =[]
     val_time = []
     train_time = []
     for i in range(1,args.epochs+1):
@@ -82,6 +92,7 @@ def main():
             train_rmse.append(metrics[2])
             if iter % args.print_every == 0 :
                 log = 'Iter: {:03d}, Train Loss: {:.4f}, Train MAPE: {:.4f}, Train RMSE: {:.4f}'
+#                 wandb.log({"train-loss": train_loss[-1], "train-rmse": train_rmse[-1]})
                 print(log.format(iter, train_loss[-1], train_mape[-1], train_rmse[-1]),flush=True)
         t2 = time.time()
         train_time.append(t2-t1)
@@ -113,8 +124,10 @@ def main():
         mvalid_mape = np.mean(valid_mape)
         mvalid_rmse = np.mean(valid_rmse)
         his_loss.append(mvalid_loss)
+        his_rmse.append(mvalid_rmse)
 
         log = 'Epoch: {:03d}, Train Loss: {:.4f}, Train MAPE: {:.4f}, Train RMSE: {:.4f}, Valid Loss: {:.4f}, Valid MAPE: {:.4f}, Valid RMSE: {:.4f}, Training Time: {:.4f}/epoch'
+        wandb.log({"train-loss": mtrain_loss, "train-rmse": mtrain_rmse, "val-loss": mvalid_loss, "val-rmse": mvalid_rmse})
         print(log.format(i, mtrain_loss, mtrain_mape, mtrain_rmse, mvalid_loss, mvalid_mape, mvalid_rmse, (t2 - t1)),flush=True)
         torch.save(engine.model.state_dict(), args.save+"_epoch_"+str(i)+"_"+str(round(mvalid_loss,2))+".pth")
     print("Average Training Time: {:.4f} secs/epoch".format(np.mean(train_time)))
@@ -141,7 +154,11 @@ def main():
 
 
     print("Training finished")
-    print("The valid loss on best model is", str(round(his_loss[bestid],4)))
+    best_valid_loss = round(his_loss[bestid],4)
+    print("The valid loss on best model is", str(best_valid_loss))
+    
+    wandb.run.summary["best_valid_loss"] = best_valid_loss
+    wandb.run.summary["best_valid_rmse"] = round(his_rmse[bestid],4)
 
 
     amae = []
@@ -159,7 +176,12 @@ def main():
 
     log = 'On average over 12 horizons, Test MAE: {:.4f}, Test MAPE: {:.4f}, Test RMSE: {:.4f}'
     print(log.format(np.mean(amae),np.mean(amape),np.mean(armse)))
-    torch.save(engine.model.state_dict(), args.save+"_exp"+str(args.expid)+"_best_"+str(round(his_loss[bestid],2))+".pth")
+    wandb.run.summary["average-12-horizons-rmse"] = np.mean(armse)
+    
+    save_location = args.save+"_exp"+str(args.expid)+"_best_"+str(round(his_loss[bestid],2))+".pth"
+    wandb.run.summary["save_location"] = save_location 
+    torch.save(engine.model.state_dict(), save_location)
+    wandb.save(save_location)
 
 
 
@@ -168,3 +190,4 @@ if __name__ == "__main__":
     main()
     t2 = time.time()
     print("Total time spent: {:.4f}".format(t2-t1))
+
